@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2017 The Bitcoin Core developers
+// Copyright (c) 2009-2019 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -47,10 +47,10 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action)
     {
-        READWRITE(FLATDATA(pchMessageStart));
-        READWRITE(FLATDATA(pchCommand));
+        READWRITE(pchMessageStart);
+        READWRITE(pchCommand);
         READWRITE(nMessageSize);
-        READWRITE(FLATDATA(pchChecksum));
+        READWRITE(pchChecksum);
     }
 
     char pchMessageStart[MESSAGE_START_SIZE];
@@ -192,13 +192,6 @@ extern const char *FILTERADD;
  */
 extern const char *FILTERCLEAR;
 /**
- * The reject message informs the receiving node that one of its previous
- * messages has been rejected.
- * @since protocol version 70002 as described by BIP61.
- * @see https://bitcoin.org/en/developer-reference#reject
- */
-extern const char *REJECT;
-/**
  * Indicates that a node prefers to receive new block announcements via a
  * "headers" message rather than an "inv".
  * @since protocol version 70012 as described by BIP130.
@@ -260,9 +253,6 @@ enum ServiceFlags : uint64_t {
     // NODE_WITNESS indicates that a node can be asked for blocks and transactions including
     // witness data.
     NODE_WITNESS = (1 << 3),
-    // NODE_XTHIN means the node supports Xtreme Thinblocks
-    // If this is turned off then the node will not service nor make xthin requests
-    NODE_XTHIN = (1 << 4),
     // NODE_NETWORK_LIMITED means the same as NODE_NETWORK with the limitation of only
     // serving the last 288 (2 day) blocks
     // See BIP159 for details on how this is implemented.
@@ -301,9 +291,10 @@ enum ServiceFlags : uint64_t {
  * If the NODE_NONE return value is changed, contrib/seeds/makeseeds.py
  * should be updated appropriately to filter for the same nodes.
  */
-static ServiceFlags GetDesirableServiceFlags(ServiceFlags services) {
-    return ServiceFlags(NODE_NETWORK | NODE_WITNESS);
-}
+ServiceFlags GetDesirableServiceFlags(ServiceFlags services);
+
+/** Set the current IBD status in order to figure out the desirable service flags */
+void SetServiceFlagsIBDCache(bool status);
 
 /**
  * A shortcut for (services & GetDesirableServiceFlags(services))
@@ -316,10 +307,10 @@ static inline bool HasAllDesirableServiceFlags(ServiceFlags services) {
 
 /**
  * Checks if a peer with the given service flags may be capable of having a
- * robust address-storage DB. Currently an alias for checking NODE_NETWORK.
+ * robust address-storage DB.
  */
 static inline bool MayHaveUsefulAddressDB(ServiceFlags services) {
-    return services & NODE_NETWORK;
+    return (services & NODE_NETWORK) || (services & NODE_NETWORK_LIMITED);
 }
 
 /** A CService with information about it as peer */
@@ -346,8 +337,8 @@ public:
             READWRITE(nTime);
         uint64_t nServicesInt = nServices;
         READWRITE(nServicesInt);
-        nServices = (ServiceFlags)nServicesInt;
-        READWRITE(*(CService*)this);
+        nServices = static_cast<ServiceFlags>(nServicesInt);
+        READWRITEAS(CService, *this);
     }
 
     // TODO: make private (improves encapsulation)
@@ -400,7 +391,6 @@ public:
     std::string GetCommand() const;
     std::string ToString() const;
 
-    // TODO: make private (improves encapsulation)
 public:
     int type;
     uint256 hash;
